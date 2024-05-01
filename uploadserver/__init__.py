@@ -35,7 +35,7 @@ def get_upload_page(theme):
 <br />
 <label for="message">Optional free text:</label>
 <br />
-<textarea id="message" name="message" style="width:100%" rows="5"></textarea>
+<textarea id="message" name="message" style="width:100%;" rows="5"></textarea>
 <br />
 <label for="auto_clear">Clear free text after submission</label>
 <input type="checkbox" id="auto_clear" name="auto_clear" >
@@ -432,6 +432,25 @@ def serve_forever():
         bind=args.bind,
     )
 
+def publish_service(host, port, address):
+    from zeroconf import Zeroconf, ServiceInfo
+    domain = ".local"
+    host = host.lower()
+    if not host.endswith(domain):
+        host += domain
+    try:
+        service = ServiceInfo("_http._tcp.local.",
+                        f"Upload Server._http._tcp.local.",
+                        port=port,
+                        parsed_addresses=[address],
+                        server=f"{host}.")
+        zeroconf = Zeroconf()
+        zeroconf.register_service(service)
+        log_event('SERVER', f'Published service http(s)://{host}:{port}')
+    except Exception as e:
+        print(f'Failed to register zeroconf service info: {e}', file=sys.stderr)
+    # TODO: unregister service when server exits
+
 def main():
     global args
     
@@ -463,6 +482,8 @@ def main():
         'uploads)')
     parser.add_argument('--basic-auth-upload',
         help='Specify user:pass for basic authentication (uploads only)')
+    parser.add_argument('--host', '-H', type=str,
+        help='Host name used for mDNS publishing. Depends on -b/--bind option')
     
     args = parser.parse_args()
 
@@ -476,5 +497,12 @@ def main():
             args.log_file = sys.stdout
     else:
         args.log_file = sys.stdout
+    if args.host:
+        # Why not publish all addresses? Because if so, it's unpredictable that the host name
+        # will resolve to which IP address.
+        if not args.bind:
+            print('-H/--host option depends on -b/--bind option.', file=sys.stderr)
+            return 1
+        publish_service(args.host, args.port, args.bind)
 
     serve_forever()
